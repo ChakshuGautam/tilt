@@ -17,18 +17,23 @@ jobs:
             goos: linux
             goarch: amd64
             asset: tilt-linux-amd64
+            cc: gcc
           - os: ubuntu-latest
             goos: linux
             goarch: arm64
             asset: tilt-linux-arm64
+            cc: aarch64-linux-gnu-gcc
+            cross_pkg: gcc-aarch64-linux-gnu
           - os: macos-latest
             goos: darwin
             goarch: arm64
             asset: tilt-darwin-arm64
+            cc: clang
           - os: macos-13
             goos: darwin
             goarch: amd64
             asset: tilt-darwin-amd64
+            cc: clang
           - os: windows-latest
             goos: windows
             goarch: amd64
@@ -44,11 +49,16 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install cross-compiler
+        if: matrix.cross_pkg
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cross_pkg }}
+
       - name: Build binary
         env:
-          CGO_ENABLED: "0"
+          CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
