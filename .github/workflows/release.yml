@@ -19,13 +19,6 @@ jobs:
             goarch: amd64
             asset: tilt-linux-amd64
             cc: gcc
-          - os: ubuntu-latest
-            goos: linux
-            goarch: arm64
-            asset: tilt-linux-arm64
-            cc: aarch64-linux-gnu-gcc
-            extld: aarch64-linux-gnu-gcc
-            cross_pkg: gcc-aarch64-linux-gnu
           - os: macos-latest
             goos: darwin
             goarch: arm64
@@ -51,10 +44,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install cross-compiler
-        if: matrix.cross_pkg
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cross_pkg }}
-
       - name: Build binary (unix)
         if: matrix.goos != 'windows'
         env:
@@ -66,12 +55,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHA="${GITHUB_SHA}"
-          EXTLD_FLAG=""
-          if [ -n "${{ matrix.extld }}" ]; then
-            EXTLD_FLAG="-extld=${{ matrix.extld }}"
-          fi
           go build -mod vendor -tags osusergo \
-            -ldflags "-s -w ${EXTLD_FLAG} -X 'main.version=${VERSION}' -X 'main.date=${DATE}' -X 'github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}'" \
+            -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.date=${DATE}' -X 'github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}'" \
             -o tilt ./cmd/tilt/
 
       - name: Build binary (windows)
@@ -100,8 +85,41 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}.*
 
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    name: Build tilt-linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in ARM64 container
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${{ github.workspace }}:/src" \
+            -w /src \
+            -e VERSION="${GITHUB_REF_NAME}" \
+            -e SHA="${GITHUB_SHA}" \
+            golang:1.25 bash -c '
+              DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              CGO_ENABLED=1 go build -mod vendor -tags osusergo \
+                -ldflags "-s -w -X main.version=${VERSION} -X main.date=${DATE} -X github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}" \
+                -o tilt ./cmd/tilt/
+            '
+
+      - name: Package
+        run: tar czf tilt-linux-arm64.tar.gz tilt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tilt-linux-arm64
+          path: tilt-linux-arm64.tar.gz
+
   release:
-    needs: build
+    needs: [build, build-linux-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
