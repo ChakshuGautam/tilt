@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -23,13 +24,14 @@ jobs:
             goarch: arm64
             asset: tilt-linux-arm64
             cc: aarch64-linux-gnu-gcc
+            extld: aarch64-linux-gnu-gcc
             cross_pkg: gcc-aarch64-linux-gnu
           - os: macos-latest
             goos: darwin
             goarch: arm64
             asset: tilt-darwin-arm64
             cc: clang
-          - os: macos-13
+          - os: macos-latest
             goos: darwin
             goarch: amd64
             asset: tilt-darwin-amd64
@@ -53,7 +55,8 @@ jobs:
         if: matrix.cross_pkg
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cross_pkg }}
 
-      - name: Build binary
+      - name: Build binary (unix)
+        if: matrix.goos != 'windows'
         env:
           CGO_ENABLED: "1"
           GOOS: ${{ matrix.goos }}
@@ -63,14 +66,25 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHA="${GITHUB_SHA}"
-          BINARY="tilt"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY="tilt.exe"
+          EXTLD_FLAG=""
+          if [ -n "${{ matrix.extld }}" ]; then
+            EXTLD_FLAG="-extld=${{ matrix.extld }}"
           fi
           go build -mod vendor -tags osusergo \
-            -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.date=${DATE}' -X 'github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}'" \
-            -o "${BINARY}" ./cmd/tilt/
+            -ldflags "-s -w ${EXTLD_FLAG} -X 'main.version=${VERSION}' -X 'main.date=${DATE}' -X 'github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}'" \
+            -o tilt ./cmd/tilt/
+
+      - name: Build binary (windows)
+        if: matrix.goos == 'windows'
         shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          SHA="${GITHUB_SHA}"
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+          go build -mod vendor -tags osusergo \
+            -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.date=${DATE}' -X 'github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}'" \
+            -o tilt.exe ./cmd/tilt/
 
       - name: Package (unix)
         if: matrix.goos != 'windows'
