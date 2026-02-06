@@ -105,7 +105,7 @@ jobs:
             -e SHA="${GITHUB_SHA}" \
             golang:1.25 bash -c '
               DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              CGO_ENABLED=1 go build -mod vendor -tags osusergo \
+              CGO_ENABLED=1 go build -mod vendor -buildvcs=false -tags osusergo \
                 -ldflags "-s -w -X main.version=${VERSION} -X main.date=${DATE} -X github.com/tilt-dev/tilt/internal/cli.commitSHA=${SHA}" \
                 -o tilt ./cmd/tilt/
             '
