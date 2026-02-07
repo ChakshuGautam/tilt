@@ -9,7 +9,29 @@ permissions:
   contents: write
 
 jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    name: Build web assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+          cache-dependency-path: web/yarn.lock
+
+      - name: Build web UI
+        run: |
+          cd web && yarn install --immutable && yarn build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: web/build/
+
   build:
+    needs: build-web
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +66,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: pkg/assets/build/
+
       - name: Build binary (unix)
         if: matrix.goos != 'windows'
         env:
@@ -52,7 +79,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ matrix.cc }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME#v}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHA="${GITHUB_SHA}"
           go build -mod vendor -tags osusergo \
@@ -63,7 +90,7 @@ jobs:
         if: matrix.goos == 'windows'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME#v}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           SHA="${GITHUB_SHA}"
           CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
@@ -86,11 +113,17 @@ jobs:
           path: ${{ matrix.asset }}.*
 
   build-linux-arm64:
+    needs: build-web
     runs-on: ubuntu-latest
     name: Build tilt-linux-arm64
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: pkg/assets/build/
 
       - uses: docker/setup-qemu-action@v3
         with:
@@ -101,7 +134,7 @@ jobs:
           docker run --rm --platform linux/arm64 \
             -v "${{ github.workspace }}:/src" \
             -w /src \
-            -e VERSION="${GITHUB_REF_NAME}" \
+            -e VERSION="${GITHUB_REF_NAME#v}" \
             -e SHA="${GITHUB_SHA}" \
             golang:1.25 bash -c '
               DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -126,6 +159,9 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Remove web-assets from release
+        run: rm -rf artifacts/index.html artifacts/static artifacts/asset-manifest.json artifacts/robots.txt 2>/dev/null || true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
