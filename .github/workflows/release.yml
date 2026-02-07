@@ -160,8 +160,8 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Remove web-assets from release
-        run: rm -rf artifacts/index.html artifacts/static artifacts/asset-manifest.json artifacts/robots.txt 2>/dev/null || true
+      - name: Keep only release archives
+        run: find artifacts/ -type f ! \( -name '*.tar.gz' -o -name '*.zip' \) -delete
 
       - name: Create release
         uses: softprops/action-gh-release@v2
